@@ -10,6 +10,12 @@ export default async function handler(req, res) {
   const { base64, mediaType } = req.body;
   if (!base64 || !mediaType) return res.status(400).json({ error: 'Missing base64 or mediaType' });
 
+  const apiKey = (process.env.ANTHROPIC_API_KEY || '').trim();
+  if (!apiKey) return res.status(500).json({ error: 'Server is missing ANTHROPIC_API_KEY' });
+  if (!/^[\x20-\x7E]+$/.test(apiKey) || /\s/.test(apiKey)) {
+    return res.status(500).json({ error: 'ANTHROPIC_API_KEY is malformed (contains whitespace or non-ASCII). Re-paste it in Vercel env vars.' });
+  }
+
   const isPDF = mediaType === 'application/pdf';
 
   const prompt = 'Extract data from this gas/fuel receipt. Return ONLY a raw JSON object with no markdown, no explanation. Use exactly these keys: {"station": "name only", "date": "MM/DD/YYYY", "total": 103.08, "mileage": 27160, "fleet_card_last4": "6902"}. Use null for missing values. total and mileage must be numbers.';
@@ -19,7 +25,7 @@ export default async function handler(req, res) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'x-api-key': apiKey,
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
@@ -62,6 +68,6 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error('Handler error:', err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: 'Internal server error during extraction. Check Vercel function logs.' });
   }
 }
