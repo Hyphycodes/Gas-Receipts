@@ -501,7 +501,10 @@ function buildCard(id, file) {
             '<span id="fleet-hint-' + id + '" style="font-family:var(--mono);font-size:10px;color:var(--accent);margin-top:2px"></span>' +
           '</div>' +
         '</div>' +
-        '<button class="btn-remove" onclick="removeReceipt(' + id + ')">✕ Remove</button>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px">' +
+          '<button class="btn-apply-all" id="apply-all-' + id + '" onclick="applyManualToAll(' + id + ')" style="display:none;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(232,255,71,0.25);padding:6px 12px;border-radius:5px;font-family:var(--mono);font-size:11px;cursor:pointer">⇩ Apply Initials / Vehicle / Card to all</button>' +
+          '<button class="btn-remove" style="margin-top:0" onclick="removeReceipt(' + id + ')">✕ Remove</button>' +
+        '</div>' +
       '</div>' +
     '</div>';
 
@@ -613,6 +616,46 @@ function updateCounts() {
   document.getElementById('ready-count').textContent = ready;
   document.getElementById('total-count').textContent = total;
   document.getElementById('submit-btn').disabled = ready === 0;
+
+  const showApplyAll = total > 1;
+  receipts.forEach(function(r) {
+    const btn = document.getElementById('apply-all-' + r.id);
+    if (btn) btn.style.display = showApplyAll ? 'inline-flex' : 'none';
+  });
+}
+
+function applyManualToAll(sourceId) {
+  const initials = document.getElementById('initials-' + sourceId);
+  const vehicle = document.getElementById('vehicle-' + sourceId);
+  const fleet = document.getElementById('fleet-' + sourceId);
+  const initialsVal = initials ? initials.value : '';
+  const vehicleVal = vehicle ? vehicle.value : '';
+  const fleetVal = fleet ? fleet.value : '';
+
+  if (!initialsVal && !vehicleVal && !fleetVal) {
+    showToast('⚠️ Fill in Initials, Vehicle, or Fleet Card first', 'fail');
+    return;
+  }
+
+  let applied = 0;
+  receipts.forEach(function(r) {
+    if (r.id === sourceId) return;
+    if (initialsVal) {
+      const el = document.getElementById('initials-' + r.id);
+      if (el) el.value = initialsVal;
+    }
+    if (vehicleVal) {
+      const el = document.getElementById('vehicle-' + r.id);
+      if (el) el.value = vehicleVal;
+    }
+    if (fleetVal) {
+      const el = document.getElementById('fleet-' + r.id);
+      if (el) el.value = fleetVal;
+    }
+    applied++;
+  });
+
+  showToast('✓ Applied to ' + applied + ' other receipt' + (applied !== 1 ? 's' : ''), 'success');
 }
 
 const SHEET_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxlx4NGzKnuK1s44hEE_ugKApuuLBoBTEFfMjFftq8FbtdJttzYenLkCfwz4422IOAP/exec';
