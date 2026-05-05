@@ -416,8 +416,14 @@ function addReceipt(file) {
         processReceipt(id, file, base64);
       })
       .catch(err => {
-        console.warn('HEIC conversion failed, sending raw:', err);
-        processReceipt(id, file, null);
+        console.error('HEIC conversion failed:', err);
+        setStatus(id, 'error', 'HEIC failed');
+        showForm(id);
+        const proc = document.getElementById('processing-' + id);
+        if (proc) {
+          proc.style.display = 'block';
+          proc.innerHTML = '<div style="color:var(--red);font-family:var(--mono);font-size:12px;padding:8px 0">HEIC conversion failed: ' + (err && err.message ? err.message : 'unknown') + '. Please convert to JPG and re-upload.</div>';
+        }
       });
   } else {
     // Regular image (JPEG, PNG, etc.)
@@ -689,9 +695,10 @@ function convertHEIC(file) {
     });
   });
 
-  return nativeAttempt.catch(() => {
+  return nativeAttempt.catch(nativeErr => {
+    console.log('Native HEIC decode failed, trying heic2any:', nativeErr && nativeErr.message);
     if (typeof heic2any !== 'function') {
-      return Promise.reject(new Error('heic2any not loaded'));
+      return Promise.reject(new Error('heic2any library did not load (check network/CDN)'));
     }
     return heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 }).then(jpegBlob => {
       return new Promise((resolve, reject) => {
