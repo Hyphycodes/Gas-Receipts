@@ -378,7 +378,8 @@ function handleFiles(files) {
 
 function addReceipt(file) {
   const id = ++idCounter;
-  receipts.push({ id, file, status: 'processing' });
+  const receipt = { id, file, status: 'processing', processedDataUrl: null };
+  receipts.push(receipt);
   const card = buildCard(id, file);
   document.getElementById('receipts-list').appendChild(card);
 
@@ -392,61 +393,48 @@ function addReceipt(file) {
     const thumb = document.getElementById('thumb-' + id);
     if (thumb) thumb.src = url;
     processReceipt(id, file, null);
-  } else if (isHEIC) {
-    // HEIC: convert via createImageBitmap + canvas (no external library needed)
-    // Works: Safari (native HEIC), Chrome 93+, Firefox 93+ via ImageDecoder
-    setStatus(id, 'processing', 'Converting...');
-    const procLabel = document.getElementById('processing-label-' + id);
-    if (procLabel) procLabel.textContent = 'Converting HEIC to JPEG...';
+    return;
+  }
 
-    convertHEIC(file)
-      .then(dataUrl => {
-        // set thumbnail
-        const thumbEl = card.querySelector('.card-thumb-div');
-        if (thumbEl) {
-          const thumbImg = document.createElement('img');
-          thumbImg.src = dataUrl;
-          thumbImg.className = 'card-thumb';
-          thumbImg.alt = '';
-          thumbEl.replaceWith(thumbImg);
-        }
-        // set full preview
-        const preview = document.getElementById('preview-' + id);
-        if (preview) preview.src = dataUrl;
-        // send converted jpeg to API
-        const base64 = dataUrl.split(',')[1];
-        setStatus(id, 'processing', 'Reading...');
-        if (procLabel) procLabel.textContent = 'Extracting receipt data...';
-        processReceipt(id, file, base64);
-      })
-      .catch(err => {
-        console.error('HEIC conversion failed:', err);
-        setStatus(id, 'error', 'HEIC failed');
-        showForm(id);
-        const proc = document.getElementById('processing-' + id);
-        if (proc) {
-          proc.style.display = 'block';
-          proc.innerHTML = '<div style="color:var(--red);font-family:var(--mono);font-size:12px;padding:8px 0">HEIC conversion failed: ' + (err && err.message ? err.message : 'unknown') + '. Please convert to JPG and re-upload.</div>';
-        }
-      });
-  } else {
-    // Regular image (JPEG, PNG, etc.)
-    const reader = new FileReader();
-    reader.onload = e => {
+  setStatus(id, 'processing', isHEIC ? 'Converting...' : 'Preparing...');
+  const procLabel = document.getElementById('processing-label-' + id);
+  if (procLabel) procLabel.textContent = isHEIC ? 'Converting HEIC to JPEG...' : 'Resizing image...';
+
+  const sourcePromise = isHEIC ? convertHEIC(file).then(dataUrl => dataUrlToBlob(dataUrl)) : Promise.resolve(file);
+
+  sourcePromise
+    .then(blob => resizeToJpeg(blob, 2000, 0.85))
+    .then(blobToDataUrl)
+    .then(dataUrl => {
+      receipt.processedDataUrl = dataUrl;
       const thumbEl = card.querySelector('.card-thumb-div');
       if (thumbEl) {
-        const img = document.createElement('img');
-        img.src = e.target.result;
-        img.className = 'card-thumb';
-        img.alt = '';
-        thumbEl.replaceWith(img);
+        const thumbImg = document.createElement('img');
+        thumbImg.src = dataUrl;
+        thumbImg.className = 'card-thumb';
+        thumbImg.alt = '';
+        thumbEl.replaceWith(thumbImg);
       }
       const preview = document.getElementById('preview-' + id);
-      if (preview) preview.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-    processReceipt(id, file, null);
-  }
+      if (preview) preview.src = dataUrl;
+      const base64 = dataUrl.split(',')[1];
+      setStatus(id, 'processing', 'Reading...');
+      if (procLabel) procLabel.textContent = 'Extracting receipt data...';
+      processReceipt(id, file, base64);
+    })
+    .catch(err => {
+      console.error('Image preparation failed:', err);
+      setStatus(id, 'error', isHEIC ? 'HEIC failed' : 'Prep failed');
+      showForm(id);
+      const proc = document.getElementById('processing-' + id);
+      if (proc) {
+        proc.style.display = 'block';
+        proc.innerHTML = '<div style="color:var(--red);font-family:var(--mono);font-size:12px;padding:8px 0">' +
+          (isHEIC ? 'HEIC conversion failed' : 'Image preparation failed') + ': ' +
+          (err && err.message ? err.message : 'unknown') +
+          (isHEIC ? '. Please convert to JPG and re-upload.' : '') + '</div>';
+      }
+    });
 }
 
 function buildCard(id, file) {
@@ -659,24 +647,18 @@ async function submitAll() {
     const payloadReceipts = await Promise.all(fieldsByReceipt.map(async function(s) {
       const file = s.receipt.file;
       const isPDF = file.name.toLowerCase().endsWith('.pdf');
-      const isHEIC = file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif');
       let imageBase64 = '';
-      let imageMediaType = file.type || 'image/jpeg';
+      let imageMediaType = 'image/jpeg';
 
-      if (isHEIC) {
-        try {
-          const dataUrl = await convertHEIC(file);
-          imageBase64 = dataUrl.split(',')[1];
-          imageMediaType = 'image/jpeg';
-        } catch (e) {
-          imageBase64 = await fileToBase64(file);
-          imageMediaType = 'image/heic';
-        }
-      } else if (isPDF) {
+      if (isPDF) {
         imageBase64 = await fileToBase64(file);
         imageMediaType = 'application/pdf';
+      } else if (s.receipt.processedDataUrl) {
+        imageBase64 = s.receipt.processedDataUrl.split(',')[1];
+        imageMediaType = 'image/jpeg';
       } else {
         imageBase64 = await fileToBase64(file);
+        imageMediaType = file.type || 'image/jpeg';
       }
 
       return {
@@ -784,6 +766,54 @@ function fileToBase64(file) {
     reader.onload = function() { resolve(reader.result.split(',')[1]); };
     reader.onerror = reject;
     reader.readAsDataURL(file);
+  });
+}
+
+function blobToDataUrl(blob) {
+  return new Promise(function(resolve, reject) {
+    const reader = new FileReader();
+    reader.onload = function(e) { resolve(e.target.result); };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+function dataUrlToBlob(dataUrl) {
+  const [meta, b64] = dataUrl.split(',');
+  const mime = (meta.match(/:(.*?);/) || [, 'image/jpeg'])[1];
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+
+function resizeToJpeg(blob, maxDim, quality) {
+  return new Promise(function(resolve, reject) {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = function() {
+      let { width, height } = img;
+      const longest = Math.max(width, height);
+      if (longest > maxDim) {
+        const scale = maxDim / longest;
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(function(out) {
+        if (!out) return reject(new Error('canvas toBlob failed'));
+        resolve(out);
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = function() {
+      URL.revokeObjectURL(url);
+      reject(new Error('image load failed during resize'));
+    };
+    img.src = url;
   });
 }
 </script>
