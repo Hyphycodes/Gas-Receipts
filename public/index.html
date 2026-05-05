@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WEX Receipt Portal</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0c0d0f;
+    --surface: #141618;
+    --surface2: #1c1f22;
+    --border: #2a2d32;
+    --border-light: #363b42;
+    --accent: #e8ff47;
+    --accent-dim: rgba(232, 255, 71, 0.12);
+    --accent-hover: #f2ff7a;
+    --text: #e8eaed;
+    --text-muted: #7a8290;
+    --text-dim: #4a5060;
+    --red: #ff5c5c;
+    --green: #4dff9e;
+    --mono: 'DM Mono', monospace;
+    --sans: 'Syne', sans-serif;
+    --radius: 10px;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+  }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 28px;
+    display: flex;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo { display: flex; align-items: center; gap: 10px; }
+
+  .logo-mark {
+    width: 32px; height: 32px;
+    background: var(--accent);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 13px; font-weight: 500; color: #000;
+  }
+
+  .logo-text { font-size: 15px; font-weight: 700; letter-spacing: 0.02em; color: var(--text); }
+  .logo-sub { font-family: var(--mono); font-size: 11px; color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; }
+
+  main { max-width: 780px; margin: 0 auto; padding: 40px 20px 80px; }
+
+  .page-title { margin-bottom: 32px; }
+  .page-title h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; }
+  .page-title p { font-family: var(--mono); font-size: 12px; color: var(--text-muted); margin-top: 6px; letter-spacing: 0.05em; }
+
+  .upload-zone {
+    border: 2px dashed var(--border-light);
+    border-radius: var(--radius);
+    padding: 48px 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: var(--surface);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .upload-zone::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: var(--accent-dim);
+    opacity: 0; transition: opacity 0.2s ease;
+  }
+
+  .upload-zone:hover, .upload-zone.dragover { border-color: var(--accent); }
+  .upload-zone:hover::before, .upload-zone.dragover::before { opacity: 1; }
+
+  .upload-icon { font-size: 36px; margin-bottom: 14px; display: block; }
+  .upload-zone h2 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+  .upload-zone p { font-family: var(--mono); font-size: 12px; color: var(--text-muted); margin-bottom: 20px; }
+
+  .upload-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent); color: #000; border: none;
+    padding: 10px 22px; border-radius: 6px;
+    font-family: var(--sans); font-size: 13px; font-weight: 700;
+    cursor: pointer; transition: background 0.15s ease;
+    position: relative; z-index: 1;
+  }
+  .upload-btn:hover { background: var(--accent-hover); }
+
+  #file-input { display: none; }
+
+  .section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin: 36px 0 16px;
+  }
+  .section-header h2 { font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
+
+  .badge {
+    font-family: var(--mono); font-size: 11px;
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text-muted); padding: 3px 10px; border-radius: 20px;
+  }
+
+  .receipts-list { display: flex; flex-direction: column; gap: 12px; }
+
+  .receipt-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+    transition: border-color 0.2s ease;
+  }
+  .receipt-card.expanded { border-color: var(--border-light); }
+  .receipt-card.complete { border-color: rgba(77, 255, 158, 0.3); }
+  .receipt-card.error { border-color: rgba(255, 92, 92, 0.3); }
+
+  .card-header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 18px; cursor: pointer; user-select: none;
+  }
+  .card-header:hover { background: var(--surface2); }
+
+  .card-thumb {
+    width: 40px; height: 40px; border-radius: 6px;
+    object-fit: cover; flex-shrink: 0;
+    background: var(--surface2); border: 1px solid var(--border);
+  }
+  .card-thumb-placeholder {
+    width: 40px; height: 40px; border-radius: 6px;
+    background: var(--surface2); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+  }
+
+  .card-info { flex: 1; min-width: 0; }
+  .card-filename { font-family: var(--mono); font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+  .card-meta { font-family: var(--mono); font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+  .card-status { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); }
+  .status-dot.processing { background: var(--accent); animation: pulse 1s infinite; }
+  .status-dot.ready { background: var(--green); }
+  .status-dot.error { background: var(--red); }
+
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .status-label { font-family: var(--mono); font-size: 11px; color: var(--text-muted); }
+  .chevron { color: var(--text-dim); transition: transform 0.2s ease; font-size: 14px; }
+  .receipt-card.expanded .chevron { transform: rotate(180deg); }
+
+  .card-body { display: none; padding: 0 18px 18px; border-top: 1px solid var(--border); }
+  .receipt-card.expanded .card-body { display: block; }
+
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group.full { grid-column: 1 / -1; }
+
+  label {
+    font-family: var(--mono); font-size: 11px; font-weight: 500;
+    color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase;
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  .auto-tag {
+    background: var(--accent-dim); color: var(--accent);
+    border: 1px solid rgba(232, 255, 71, 0.25);
+    font-size: 9px; padding: 1px 5px; border-radius: 3px; letter-spacing: 0.05em;
+  }
+
+  input[type="text"], input[type="number"], select {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text);
+    font-family: var(--mono); font-size: 13px;
+    padding: 9px 12px; width: 100%;
+    transition: border-color 0.15s ease;
+    appearance: none; -webkit-appearance: none;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  input.auto-filled { border-color: rgba(232, 255, 71, 0.3); background: rgba(232, 255, 71, 0.04); }
+
+  select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%237a8290' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center;
+    padding-right: 32px; cursor: pointer;
+  }
+  select option { background: var(--surface2); }
+
+  .processing-state {
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px 0 4px;
+    font-family: var(--mono); font-size: 12px; color: var(--text-muted);
+  }
+
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .receipt-preview {
+    width: 100%; max-height: 200px; object-fit: contain;
+    border-radius: 6px; border: 1px solid var(--border);
+    margin-top: 16px; background: var(--surface2);
+  }
+
+  .btn-remove {
+    background: none; border: 1px solid var(--border);
+    color: var(--text-muted); padding: 6px 12px;
+    border-radius: 5px; font-family: var(--mono); font-size: 11px;
+    cursor: pointer; margin-top: 16px; transition: all 0.15s ease;
+  }
+  .btn-remove:hover { border-color: var(--red); color: var(--red); }
+
+  .submit-section {
+    margin-top: 32px; padding-top: 24px;
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap;
+  }
+  .submit-info { font-family: var(--mono); font-size: 12px; color: var(--text-muted); }
+  .submit-info span { color: var(--accent); font-weight: 500; }
+
+  .btn-submit {
+    background: var(--accent); color: #000; border: none;
+    padding: 12px 28px; border-radius: 6px;
+    font-family: var(--sans); font-size: 14px; font-weight: 700;
+    cursor: pointer; transition: background 0.15s ease;
+  }
+  .btn-submit:hover { background: var(--accent-hover); }
+  .btn-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .toast {
+    position: fixed; bottom: 28px; right: 20px;
+    background: var(--surface2); border: 1px solid var(--border-light);
+    border-radius: 8px; padding: 14px 18px;
+    font-family: var(--mono); font-size: 12px; color: var(--text);
+    display: flex; align-items: center; gap: 10px;
+    z-index: 999; transform: translateY(80px); opacity: 0;
+    transition: all 0.3s ease; max-width: 320px;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.success { border-color: rgba(77, 255, 158, 0.4); }
+  .toast.fail { border-color: rgba(255, 92, 92, 0.4); }
+
+  @media (max-width: 560px) {
+    .form-grid { grid-template-columns: 1fr; }
+    .form-group.full { grid-column: 1; }
+    header { padding: 14px 16px; }
+    main { padding: 24px 14px 60px; }
+    .page-title h1 { font-size: 22px; }
+    .submit-section { flex-direction: column; align-items: stretch; }
+    .btn-submit { width: 100%; text-align: center; }
+    .upload-zone { padding: 36px 20px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-mark">W</div>
+    <div>
+      <div class="logo-text">WEX Receipt Portal</div>
+      <div class="logo-sub">Chicago Testing Lab</div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="page-title">
+    <h1>Submit Gas Receipts</h1>
+    <p>Upload one or multiple receipts — fields are auto-filled from each image</p>
+  </div>
+
+  <div class="upload-zone" id="upload-zone">
+    <span class="upload-icon">⛽</span>
+    <h2>Drop receipts here</h2>
+    <p>JPEG · PNG · HEIC · PDF &nbsp;·&nbsp; Up to 25MB per file</p>
+    <button class="upload-btn" onclick="document.getElementById('file-input').click()">＋ Choose Files</button>
+    <input type="file" id="file-input" multiple accept="image/*,.pdf,.heic">
+  </div>
+
+  <div id="receipts-section" style="display:none">
+    <div class="section-header">
+      <h2>Receipts</h2>
+      <div style="display:flex;align-items:center;gap:10px">
+        <button class="upload-btn" style="padding:6px 14px;font-size:12px" onclick="document.getElementById('file-input').click()">＋ Add More</button>
+        <span class="badge" id="count-badge">0 receipts</span>
+      </div>
+    </div>
+    <div class="receipts-list" id="receipts-list"></div>
+    <div class="submit-section">
+      <div class="submit-info">
+        <span id="ready-count">0</span> of <span id="total-count">0</span> receipts ready to submit
+      </div>
+      <button class="btn-submit" id="submit-btn" disabled onclick="submitAll()">Submit All Receipts →</button>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const VEHICLE_IDS = [
+  'A4040','A4050','A4070',
+  'P4720','P4730','P4740','P4750','P4770','P4780',
+  'P4830','P4840','P4850','P4860','P4870','P4880','P4890',
+  'P4910','P4920','P4930','P4940','P4950','P4960','P4970',
+  'P4980','P4990','P4000','P4010','P4020','P4030',
+  'P4040','P4050','P4060','P4070','P4080','P4090','P4100','P4110',
+  'Rental Car'
+];
+
+const FLEET_CARDS = [
+  ...Array.from({length: 31}, (_, i) => 'CTL' + (i + 1)),
+  'CTL-TH1','CTL-TH2','CTL-TH3'
+];
+
+let receipts = [];
+let idCounter = 0;
+
+const zone = document.getElementById('upload-zone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
+zone.addEventListener('click', e => { if (e.target.tagName !== 'BUTTON') document.getElementById('file-input').click(); });
+document.getElementById('file-input').addEventListener('change', e => { handleFiles(e.target.files); e.target.value = ''; });
+
+function handleFiles(files) {
+  const arr = Array.from(files);
+  if (!arr.length) return;
+  arr.forEach(file => addReceipt(file));
+  document.getElementById('receipts-section').style.display = 'block';
+  updateCounts();
+}
+
+function addReceipt(file) {
+  const id = ++idCounter;
+  receipts.push({ id, file, status: 'processing' });
+  const card = buildCard(id, file);
+  document.getElementById('receipts-list').appendChild(card);
+
+  if (file.type.startsWith('image/') || file.name.toLowerCase().endsWith('.heic')) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const thumbEl = card.querySelector('.card-thumb-div');
+      if (thumbEl) {
+        const img = document.createElement('img');
+        img.src = e.target.result;
+        img.className = 'card-thumb';
+        img.alt = '';
+        thumbEl.replaceWith(img);
+      }
+      const preview = document.getElementById('preview-' + id);
+      if (preview) preview.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  processReceipt(id, file);
+}
+
+function buildCard(id, file) {
+  const card = document.createElement('div');
+  card.className = 'receipt-card expanded';
+  card.id = 'card-' + id;
+  const size = (file.size / 1024).toFixed(0) + ' KB';
+  const isPDF = file.name.toLowerCase().endsWith('.pdf');
+
+  const vehicleOptions = VEHICLE_IDS.map(v => '<option value="' + v + '">' + v + '</option>').join('');
+  const fleetOptions = FLEET_CARDS.map(c => '<option value="' + c + '">' + c + '</option>').join('');
+
+  card.innerHTML =
+    '<div class="card-header" onclick="toggleCard(' + id + ')">' +
+      (isPDF
+        ? '<div class="card-thumb-placeholder">📄</div>'
+        : '<div class="card-thumb-div card-thumb" style="background:var(--surface2)"></div>') +
+      '<div class="card-info">' +
+        '<div class="card-filename">' + file.name + '</div>' +
+        '<div class="card-meta">' + size + '</div>' +
+      '</div>' +
+      '<div class="card-status">' +
+        '<div class="status-dot processing" id="dot-' + id + '"></div>' +
+        '<span class="status-label" id="status-label-' + id + '">Reading...</span>' +
+      '</div>' +
+      '<span class="chevron">▾</span>' +
+    '</div>' +
+    '<div class="card-body">' +
+      '<div class="processing-state" id="processing-' + id + '">' +
+        '<div class="spinner"></div>Extracting receipt data...' +
+      '</div>' +
+      '<div id="form-' + id + '" style="display:none">' +
+        (!isPDF ? '<img class="receipt-preview" id="preview-' + id + '" src="" alt="Receipt">' : '') +
+        '<div class="form-grid">' +
+          '<div class="form-group full">' +
+            '<label>Gas Station / Vendor <span class="auto-tag">Auto</span></label>' +
+            '<input type="text" id="station-' + id + '" placeholder="e.g. Pride Gas">' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label>Date <span class="auto-tag">Auto</span></label>' +
+            '<input type="text" id="date-' + id + '" placeholder="MM/DD/YYYY">' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label>Total Purchase <span class="auto-tag">Auto</span></label>' +
+            '<input type="number" id="total-' + id + '" placeholder="0.00" step="0.01">' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label>Mileage / Odometer <span class="auto-tag">Auto</span></label>' +
+            '<input type="number" id="mileage-' + id + '" placeholder="e.g. 27160">' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label>Technician Initials</label>' +
+            '<input type="text" id="initials-' + id + '" placeholder="e.g. JD" maxlength="4">' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label>Vehicle ID</label>' +
+            '<select id="vehicle-' + id + '"><option value="">— Select Vehicle —</option>' + vehicleOptions + '</select>' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label>Fleet Card Number</label>' +
+            '<select id="fleet-' + id + '"><option value="">— Select Card —</option>' + fleetOptions + '</select>' +
+            '<span id="fleet-hint-' + id + '" style="font-family:var(--mono);font-size:10px;color:var(--accent);margin-top:2px"></span>' +
+          '</div>' +
+        '</div>' +
+        '<button class="btn-remove" onclick="removeReceipt(' + id + ')">✕ Remove</button>' +
+      '</div>' +
+    '</div>';
+
+  return card;
+}
+
+function toggleCard(id) {
+  document.getElementById('card-' + id).classList.toggle('expanded');
+}
+
+async function processReceipt(id, file) {
+  try {
+    const base64 = await fileToBase64(file);
+    const isPDF = file.name.toLowerCase().endsWith('.pdf');
+    const mediaType = isPDF ? 'application/pdf' : (file.type && file.type.startsWith('image/') ? file.type : 'image/jpeg');
+
+    const response = await fetch('/api/extract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ base64, mediaType })
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Server error ' + response.status);
+    }
+
+    const extracted = await response.json();
+    console.log('Extracted:', extracted);
+
+    showForm(id);
+    fillForm(id, extracted);
+    setStatus(id, 'ready', 'Ready');
+
+  } catch (err) {
+    console.error('Error:', err.message);
+    setStatus(id, 'error', 'Check manually');
+    showForm(id);
+  }
+}
+
+function fillForm(id, data) {
+  const set = function(fieldId, val) {
+    const el = document.getElementById(fieldId);
+    if (el && val !== null && val !== undefined && String(val).trim() !== '') {
+      el.value = val;
+      el.classList.add('auto-filled');
+    }
+  };
+  set('station-' + id, data.station);
+  set('date-' + id, data.date);
+  set('total-' + id, data.total);
+  set('mileage-' + id, data.mileage);
+  if (data.fleet_card_last4) {
+    const hint = document.getElementById('fleet-hint-' + id);
+    if (hint) hint.textContent = 'Card on receipt ends \u00b7\u00b7\u00b7' + data.fleet_card_last4;
+  }
+  updateCounts();
+}
+
+function showForm(id) {
+  const proc = document.getElementById('processing-' + id);
+  const form = document.getElementById('form-' + id);
+  if (proc) proc.style.display = 'none';
+  if (form) form.style.display = 'block';
+}
+
+function setStatus(id, type, label) {
+  const dot = document.getElementById('dot-' + id);
+  const lbl = document.getElementById('status-label-' + id);
+  const card = document.getElementById('card-' + id);
+  if (dot) dot.className = 'status-dot ' + type;
+  if (lbl) lbl.textContent = label;
+  if (card) {
+    card.classList.remove('complete', 'error');
+    if (type === 'ready') card.classList.add('complete');
+    if (type === 'error') card.classList.add('error');
+  }
+  const receipt = receipts.find(function(r) { return r.id === id; });
+  if (receipt) receipt.status = type;
+}
+
+function removeReceipt(id) {
+  receipts = receipts.filter(function(r) { return r.id !== id; });
+  const card = document.getElementById('card-' + id);
+  if (card) card.remove();
+  if (receipts.length === 0) document.getElementById('receipts-section').style.display = 'none';
+  updateCounts();
+}
+
+function updateCounts() {
+  const total = receipts.length;
+  const ready = receipts.filter(function(r) { return r.status === 'ready'; }).length;
+  document.getElementById('count-badge').textContent = total + ' receipt' + (total !== 1 ? 's' : '');
+  document.getElementById('ready-count').textContent = ready;
+  document.getElementById('total-count').textContent = total;
+  document.getElementById('submit-btn').disabled = ready === 0;
+}
+
+function submitAll() {
+  const submissions = receipts.map(function(r) {
+    const id = r.id;
+    return {
+      file: r.file.name,
+      station: document.getElementById('station-' + id) ? document.getElementById('station-' + id).value : '',
+      date: document.getElementById('date-' + id) ? document.getElementById('date-' + id).value : '',
+      total: document.getElementById('total-' + id) ? document.getElementById('total-' + id).value : '',
+      mileage: document.getElementById('mileage-' + id) ? document.getElementById('mileage-' + id).value : '',
+      initials: document.getElementById('initials-' + id) ? document.getElementById('initials-' + id).value : '',
+      vehicle: document.getElementById('vehicle-' + id) ? document.getElementById('vehicle-' + id).value : '',
+      fleet: document.getElementById('fleet-' + id) ? document.getElementById('fleet-' + id).value : '',
+    };
+  });
+
+  const missing = submissions.filter(function(s) { return !s.vehicle || !s.initials || !s.fleet; });
+  if (missing.length > 0) {
+    showToast('⚠️ ' + missing.length + ' receipt(s) missing Vehicle ID, Fleet Card, or Initials', 'fail');
+    return;
+  }
+
+  console.log('Submission payload:', JSON.stringify(submissions, null, 2));
+  showToast('✓ ' + submissions.length + ' receipt(s) submitted successfully', 'success');
+
+  setTimeout(function() {
+    receipts = [];
+    document.getElementById('receipts-list').innerHTML = '';
+    document.getElementById('receipts-section').style.display = 'none';
+    updateCounts();
+  }, 1800);
+}
+
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + (type || '') + ' show';
+  setTimeout(function() { t.classList.remove('show'); }, 4000);
+}
+
+function fileToBase64(file) {
+  return new Promise(function(resolve, reject) {
+    const reader = new FileReader();
+    reader.onload = function() { resolve(reader.result.split(',')[1]); };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+</script>
+</body>
+</html>

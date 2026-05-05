@@ -1,0 +1,7 @@
+{
+  "name": "gas-receipts",
+  "version": "1.0.0",
+  "description": "WEX Gas Receipt Portal — Chicago Testing Lab",
+  "engines": { "node": "18.x" },
+  "dependencies": {}
+}
