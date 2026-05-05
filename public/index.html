@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WEX Receipt Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
 
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -664,24 +665,36 @@ document.addEventListener('keydown', function(e) {
 });
 
 function convertHEIC(file) {
-  return new Promise((resolve, reject) => {
-    // Try createImageBitmap (Chrome, Firefox, Safari all support this for HEIC on modern versions)
-    createImageBitmap(file)
-      .then(bitmap => {
-        const canvas = document.createElement('canvas');
-        canvas.width = bitmap.width;
-        canvas.height = bitmap.height;
-        canvas.getContext('2d').drawImage(bitmap, 0, 0);
-        bitmap.close();
-        canvas.toBlob(blob => {
-          if (!blob) return reject(new Error('canvas toBlob failed'));
-          const reader = new FileReader();
-          reader.onload = e => resolve(e.target.result);
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        }, 'image/jpeg', 0.92);
-      })
-      .catch(reject);
+  // Try native first (Safari decodes HEIC); fall back to heic2any (libheif WASM) for Chrome/Firefox.
+  const nativeAttempt = createImageBitmap(file).then(bitmap => {
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    canvas.getContext('2d').drawImage(bitmap, 0, 0);
+    bitmap.close();
+    return new Promise((resolve, reject) => {
+      canvas.toBlob(blob => {
+        if (!blob) return reject(new Error('canvas toBlob failed'));
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      }, 'image/jpeg', 0.92);
+    });
+  });
+
+  return nativeAttempt.catch(() => {
+    if (typeof heic2any !== 'function') {
+      return Promise.reject(new Error('heic2any not loaded'));
+    }
+    return heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 }).then(jpegBlob => {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(jpegBlob);
+      });
+    });
   });
 }
 
