@@ -623,11 +623,15 @@ function updateCounts() {
   document.getElementById('submit-btn').disabled = ready === 0;
 }
 
-function submitAll() {
-  const submissions = receipts.map(function(r) {
+const SHEET_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxlx4NGzKnuK1s44hEE_ugKApuuLBoBTEFfMjFftq8FbtdJttzYenLkCfwz4422IOAP/exec';
+
+async function submitAll() {
+  const btn = document.getElementById('submit-btn');
+  const fieldsByReceipt = receipts.map(function(r) {
     const id = r.id;
     return {
-      file: r.file.name,
+      receipt: r,
+      filename: r.file.name,
       station: document.getElementById('station-' + id) ? document.getElementById('station-' + id).value : '',
       date: document.getElementById('date-' + id) ? document.getElementById('date-' + id).value : '',
       total: document.getElementById('total-' + id) ? document.getElementById('total-' + id).value : '',
@@ -638,21 +642,76 @@ function submitAll() {
     };
   });
 
-  const missing = submissions.filter(function(s) { return !s.vehicle || !s.initials || !s.fleet; });
+  const missing = fieldsByReceipt.filter(function(s) { return !s.vehicle || !s.initials || !s.fleet; });
   if (missing.length > 0) {
     showToast('⚠️ ' + missing.length + ' receipt(s) missing Vehicle ID, Fleet Card, or Initials', 'fail');
     return;
   }
 
-  console.log('Submission payload:', JSON.stringify(submissions, null, 2));
-  showToast('✓ ' + submissions.length + ' receipt(s) submitted successfully', 'success');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
 
-  setTimeout(function() {
-    receipts = [];
-    document.getElementById('receipts-list').innerHTML = '';
-    document.getElementById('receipts-section').style.display = 'none';
-    updateCounts();
-  }, 1800);
+  try {
+    const payloadReceipts = await Promise.all(fieldsByReceipt.map(async function(s) {
+      const file = s.receipt.file;
+      const isPDF = file.name.toLowerCase().endsWith('.pdf');
+      const isHEIC = file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif');
+      let imageBase64 = '';
+      let imageMediaType = file.type || 'image/jpeg';
+
+      if (isHEIC) {
+        try {
+          const dataUrl = await convertHEIC(file);
+          imageBase64 = dataUrl.split(',')[1];
+          imageMediaType = 'image/jpeg';
+        } catch (e) {
+          imageBase64 = await fileToBase64(file);
+          imageMediaType = 'image/heic';
+        }
+      } else if (isPDF) {
+        imageBase64 = await fileToBase64(file);
+        imageMediaType = 'application/pdf';
+      } else {
+        imageBase64 = await fileToBase64(file);
+      }
+
+      return {
+        filename: s.filename,
+        date: s.date,
+        station: s.station,
+        total: s.total,
+        mileage: s.mileage,
+        vehicle: s.vehicle,
+        fleet: s.fleet,
+        initials: s.initials,
+        imageBase64: imageBase64,
+        imageMediaType: imageMediaType
+      };
+    }));
+
+    const response = await fetch(SHEET_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ receipts: payloadReceipts })
+    });
+
+    const result = await response.json();
+    if (!result.ok) throw new Error(result.error || 'Sheet rejected the submission');
+
+    showToast('✓ ' + payloadReceipts.length + ' receipt(s) saved to sheet', 'success');
+
+    setTimeout(function() {
+      receipts = [];
+      document.getElementById('receipts-list').innerHTML = '';
+      document.getElementById('receipts-section').style.display = 'none';
+      updateCounts();
+    }, 1800);
+  } catch (err) {
+    console.error('Submission error:', err);
+    showToast('⚠️ Submission failed: ' + (err.message || 'unknown'), 'fail');
+    btn.disabled = false;
+    btn.textContent = 'Submit All Receipts →';
+  }
 }
 
 function showToast(msg, type) {
