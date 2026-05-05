@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WEX Receipt Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -376,7 +377,49 @@ function addReceipt(file) {
   const card = buildCard(id, file);
   document.getElementById('receipts-list').appendChild(card);
 
-  if (file.type.startsWith('image/') || file.name.toLowerCase().endsWith('.heic')) {
+  const isHEIC = file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif';
+  const isPDF = file.name.toLowerCase().endsWith('.pdf');
+
+  if (isPDF) {
+    const url = URL.createObjectURL(file);
+    const preview = document.getElementById('preview-' + id);
+    if (preview) preview.src = url;
+    const thumb = document.getElementById('thumb-' + id);
+    if (thumb) thumb.src = url;
+    processReceipt(id, file, null);
+  } else if (isHEIC) {
+    // HEIC: convert via createImageBitmap + canvas (no external library needed)
+    // Works: Safari (native HEIC), Chrome 93+, Firefox 93+ via ImageDecoder
+    setStatus(id, 'processing', 'Converting...');
+    const procLabel = document.getElementById('processing-label-' + id);
+    if (procLabel) procLabel.textContent = 'Converting HEIC to JPEG...';
+
+    convertHEIC(file)
+      .then(dataUrl => {
+        // set thumbnail
+        const thumbEl = card.querySelector('.card-thumb-div');
+        if (thumbEl) {
+          const thumbImg = document.createElement('img');
+          thumbImg.src = dataUrl;
+          thumbImg.className = 'card-thumb';
+          thumbImg.alt = '';
+          thumbEl.replaceWith(thumbImg);
+        }
+        // set full preview
+        const preview = document.getElementById('preview-' + id);
+        if (preview) preview.src = dataUrl;
+        // send converted jpeg to API
+        const base64 = dataUrl.split(',')[1];
+        setStatus(id, 'processing', 'Reading...');
+        if (procLabel) procLabel.textContent = 'Extracting receipt data...';
+        processReceipt(id, file, base64);
+      })
+      .catch(err => {
+        console.warn('HEIC conversion failed, sending raw:', err);
+        processReceipt(id, file, null);
+      });
+  } else {
+    // Regular image (JPEG, PNG, etc.)
     const reader = new FileReader();
     reader.onload = e => {
       const thumbEl = card.querySelector('.card-thumb-div');
@@ -391,15 +434,8 @@ function addReceipt(file) {
       if (preview) preview.src = e.target.result;
     };
     reader.readAsDataURL(file);
-  } else if (file.name.toLowerCase().endsWith('.pdf')) {
-    const url = URL.createObjectURL(file);
-    const preview = document.getElementById('preview-' + id);
-    if (preview) preview.src = url;
-    const thumb = document.getElementById('thumb-' + id);
-    if (thumb) thumb.src = url;
+    processReceipt(id, file, null);
   }
-
-  processReceipt(id, file);
 }
 
 function buildCard(id, file) {
@@ -432,7 +468,7 @@ function buildCard(id, file) {
         ? '<embed class="pdf-preview" id="preview-' + id + '" type="application/pdf" src="">'
         : '<img class="receipt-preview" id="preview-' + id + '" src="" alt="Receipt" onclick="openLightbox(this.src)">') +
       '<div class="processing-state" id="processing-' + id + '">' +
-        '<div class="spinner"></div>Extracting receipt data...' +
+        '<div class="spinner"></div><span id="processing-label-' + id + '">Extracting receipt data...</span>' +
       '</div>' +
       '<div id="form-' + id + '" style="display:none">' +
         '<div class="form-grid">' +
@@ -477,11 +513,19 @@ function toggleCard(id) {
   document.getElementById('card-' + id).classList.toggle('expanded');
 }
 
-async function processReceipt(id, file) {
+async function processReceipt(id, file, preconvertedBase64) {
   try {
-    const base64 = await fileToBase64(file);
     const isPDF = file.name.toLowerCase().endsWith('.pdf');
-    const mediaType = isPDF ? 'application/pdf' : (file.type && file.type.startsWith('image/') ? file.type : 'image/jpeg');
+    let base64, mediaType;
+    if (preconvertedBase64) {
+      // HEIC already converted to JPEG by heic2any
+      base64 = preconvertedBase64;
+      mediaType = 'image/jpeg';
+    } else {
+      base64 = await fileToBase64(file);
+      mediaType = isPDF ? 'application/pdf' : (file.type && file.type.startsWith('image/') ? file.type : 'image/jpeg');
+    }
+    setStatus(id, 'processing', 'Reading...');
 
     const response = await fetch('/api/extract', {
       method: 'POST',
@@ -618,6 +662,28 @@ function closeLightbox() {
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') closeLightbox();
 });
+
+function convertHEIC(file) {
+  return new Promise((resolve, reject) => {
+    // Try createImageBitmap (Chrome, Firefox, Safari all support this for HEIC on modern versions)
+    createImageBitmap(file)
+      .then(bitmap => {
+        const canvas = document.createElement('canvas');
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        canvas.getContext('2d').drawImage(bitmap, 0, 0);
+        bitmap.close();
+        canvas.toBlob(blob => {
+          if (!blob) return reject(new Error('canvas toBlob failed'));
+          const reader = new FileReader();
+          reader.onload = e => resolve(e.target.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        }, 'image/jpeg', 0.92);
+      })
+      .catch(reject);
+  });
+}
 
 function fileToBase64(file) {
   return new Promise(function(resolve, reject) {
