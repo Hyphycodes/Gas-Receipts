@@ -213,10 +213,27 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 
   .receipt-preview {
-    width: 100%; max-height: 200px; object-fit: contain;
+    width: 100%; max-height: 280px; object-fit: contain;
+    border-radius: 6px; border: 1px solid var(--border);
+    margin-top: 16px; background: var(--surface2);
+    cursor: zoom-in; transition: border-color 0.15s ease;
+  }
+  .receipt-preview:hover { border-color: var(--accent); }
+
+  .pdf-preview {
+    width: 100%; height: 420px;
     border-radius: 6px; border: 1px solid var(--border);
     margin-top: 16px; background: var(--surface2);
   }
+
+  .lightbox {
+    position: fixed; inset: 0;
+    background: rgba(0, 0, 0, 0.92);
+    display: none; align-items: center; justify-content: center;
+    z-index: 1000; cursor: zoom-out; padding: 20px;
+  }
+  .lightbox.show { display: flex; }
+  .lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; }
 
   .btn-remove {
     background: none; border: 1px solid var(--border);
@@ -315,6 +332,10 @@
 
 <div class="toast" id="toast"></div>
 
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" src="" alt="">
+</div>
+
 <script>
 const VEHICLE_IDS = [
   'A4040','A4050','A4070',
@@ -370,6 +391,12 @@ function addReceipt(file) {
       if (preview) preview.src = e.target.result;
     };
     reader.readAsDataURL(file);
+  } else if (file.name.toLowerCase().endsWith('.pdf')) {
+    const url = URL.createObjectURL(file);
+    const preview = document.getElementById('preview-' + id);
+    if (preview) preview.src = url;
+    const thumb = document.getElementById('thumb-' + id);
+    if (thumb) thumb.src = url;
   }
 
   processReceipt(id, file);
@@ -388,7 +415,7 @@ function buildCard(id, file) {
   card.innerHTML =
     '<div class="card-header" onclick="toggleCard(' + id + ')">' +
       (isPDF
-        ? '<div class="card-thumb-placeholder">📄</div>'
+        ? '<embed class="card-thumb" id="thumb-' + id + '" type="application/pdf" src="" style="pointer-events:none">'
         : '<div class="card-thumb-div card-thumb" style="background:var(--surface2)"></div>') +
       '<div class="card-info">' +
         '<div class="card-filename">' + file.name + '</div>' +
@@ -401,11 +428,13 @@ function buildCard(id, file) {
       '<span class="chevron">▾</span>' +
     '</div>' +
     '<div class="card-body">' +
+      (isPDF
+        ? '<embed class="pdf-preview" id="preview-' + id + '" type="application/pdf" src="">'
+        : '<img class="receipt-preview" id="preview-' + id + '" src="" alt="Receipt" onclick="openLightbox(this.src)">') +
       '<div class="processing-state" id="processing-' + id + '">' +
         '<div class="spinner"></div>Extracting receipt data...' +
       '</div>' +
       '<div id="form-' + id + '" style="display:none">' +
-        (!isPDF ? '<img class="receipt-preview" id="preview-' + id + '" src="" alt="Receipt">' : '') +
         '<div class="form-grid">' +
           '<div class="form-group full">' +
             '<label>Gas Station / Vendor <span class="auto-tag">Auto</span></label>' +
@@ -575,6 +604,20 @@ function showToast(msg, type) {
   t.className = 'toast ' + (type || '') + ' show';
   setTimeout(function() { t.classList.remove('show'); }, 4000);
 }
+
+function openLightbox(src) {
+  const lb = document.getElementById('lightbox');
+  document.getElementById('lightbox-img').src = src;
+  lb.classList.add('show');
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('show');
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeLightbox();
+});
 
 function fileToBase64(file) {
   return new Promise(function(resolve, reject) {
