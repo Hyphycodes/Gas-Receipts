@@ -550,6 +550,12 @@ async function processReceipt(id, file, preconvertedBase64) {
     console.error('Error:', err.message);
     setStatus(id, 'error', 'Check manually');
     showForm(id);
+    showToast('⚠️ ' + (err.message || 'Extraction failed'), 'fail');
+    const proc = document.getElementById('processing-' + id);
+    if (proc) {
+      proc.style.display = 'block';
+      proc.innerHTML = '<div style="color:var(--red);font-family:var(--mono);font-size:12px;padding:8px 0">Error: ' + (err.message || 'unknown') + '</div>';
+    }
   }
 }
 
