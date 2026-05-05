@@ -5,7 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WEX Receipt Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/heic-to@1.4.2/dist/heic-to.js"></script>
+<script type="module">
+  import { heicTo } from 'https://cdn.jsdelivr.net/npm/heic-to@1.4.2/+esm';
+  window.heicTo = heicTo;
+  window.dispatchEvent(new Event('heic-to-ready'));
+</script>
 
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -754,12 +758,16 @@ function convertHEIC(file) {
     });
   });
 
-  return nativeAttempt.catch(nativeErr => {
+  return nativeAttempt.catch(async nativeErr => {
     console.log('Native HEIC decode failed, trying heic-to:', nativeErr && nativeErr.message);
-    if (typeof heicTo !== 'function') {
-      return Promise.reject(new Error('heic-to library did not load (check network/CDN)'));
+    if (typeof window.heicTo !== 'function') {
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('heic-to load timeout (check network/CDN)')), 15000);
+        window.addEventListener('heic-to-ready', () => { clearTimeout(timeout); resolve(); }, { once: true });
+        if (typeof window.heicTo === 'function') { clearTimeout(timeout); resolve(); }
+      });
     }
-    return heicTo({ blob: file, type: 'image/jpeg', quality: 0.92 }).then(jpegBlob => {
+    return window.heicTo({ blob: file, type: 'image/jpeg', quality: 0.92 }).then(jpegBlob => {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = e => resolve(e.target.result);
