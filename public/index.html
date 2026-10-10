@@ -302,7 +302,7 @@
       <div class="logo-sub">Chicago Testing Lab</div>
     </div>
   </div>
-</header>
+<div id="ctl-identity" style="font-size:13px;color:var(--text-muted)"></div></header>
 
 <main>
   <div class="page-title">
@@ -859,6 +859,9 @@ function resizeToJpeg(blob, maxDim, quality) {
     img.src = url;
   });
 }
+</script>
+<script>
+fetch('/api/session').then(r=>r.json()).then(({user})=>{if(user)document.getElementById('ctl-identity').textContent='Signed in as '+user.name;}).catch(()=>{});
 </script>
 </body>
 </html>
